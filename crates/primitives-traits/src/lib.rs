@@ -20,6 +20,9 @@ pub use constants::gas_units::{format_gas, format_gas_throughput};
 pub mod account;
 pub use account::{Account, Bytecode};
 
+pub mod block;
+pub use block::{Block, BlockBody};
+
 pub mod receipt;
 pub use receipt::Receipt;
 
