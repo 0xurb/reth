@@ -31,7 +31,7 @@ macro_rules! define_exex {
         pub extern fn _launch_exex<Node: FullNodeComponents>(
             ctx: $crate::ExExContext<Node>,
         ) -> impl std::future::Future<
-            Output = eyre::Result<impl Future<Output = eyre::Result<()>> + Send>,
+            Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
         > {
             $user_fn(ctx)
         }
@@ -43,7 +43,7 @@ macro_rules! define_exex {
 	    pub extern fn _launch_exex<Node: FullNodeComponents>(
 	        ctx: $crate::ExExContext<Node>,
 	    ) -> impl std::future::Future<
-	        Output = eyre::Result<impl Future<Output = eyre::Result<()>> + Send>,
+	        Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
 	    > {
 			async move { Ok($user_fn(ctx)) }
 	    }
