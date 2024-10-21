@@ -6,8 +6,8 @@ use futures::future;
 use reth_chain_state::ForkChoiceSubscriptions;
 use reth_chainspec::EthChainSpec;
 use reth_exex::{
-    ExExContext, ExExHandle, ExExManager, ExExManagerHandle, ExExNotificationSource, Wal,
-    DEFAULT_EXEX_MANAGER_CAPACITY,
+    launch::BoxedLaunchExEx, ExExContext, ExExHandle, ExExManager, ExExManagerHandle,
+    ExExNotificationSource, Wal, DEFAULT_EXEX_MANAGER_CAPACITY,
 };
 use reth_node_api::{FullNodeComponents, NodeTypes};
 use reth_primitives::Head;
@@ -15,7 +15,7 @@ use reth_provider::CanonStateSubscriptions;
 use reth_tracing::tracing::{debug, info};
 use tracing::Instrument;
 
-use crate::{common::WithConfigs, exex::BoxedLaunchExEx};
+use crate::common::WithConfigs;
 
 /// Can launch execution extensions.
 pub struct ExExLauncher<Node: FullNodeComponents> {
@@ -41,12 +41,19 @@ impl<Node: FullNodeComponents + Clone> ExExLauncher<Node> {
     /// Spawns all extensions and returns the handle to the exex manager if any extensions are
     /// installed.
     pub async fn launch(self) -> eyre::Result<Option<ExExManagerHandle>> {
-        let Self { head, extensions, components, config_container } = self;
+        let Self { head, mut extensions, components, config_container } = self;
 
-        if extensions.is_empty() {
-            // nothing to launch
-            return Ok(None)
-        }
+        // load dynamically, if exists on `exex/libs`
+        let libs_dir_path = config_container
+            .config
+            .datadir
+            .clone()
+            .resolve_datadir(config_container.config.chain.chain())
+            .exex_libs();
+        let dyexex_libs_paths = reth_exex::load_library_paths(libs_dir_path)?;
+
+        let mut exexes = Vec::with_capacity(extensions.len() + dyexex_libs_paths.len());
+        let mut exex_handles = Vec::with_capacity(extensions.len() + dyexex_libs_paths.len());
 
         info!(target: "reth::cli", "Loading ExEx Write-Ahead Log...");
         let exex_wal = Wal::new(
@@ -58,10 +65,44 @@ impl<Node: FullNodeComponents + Clone> ExExLauncher<Node> {
                 .exex_wal(),
         )?;
 
-        let mut exex_handles = Vec::with_capacity(extensions.len());
-        let mut exexes = Vec::with_capacity(extensions.len());
+        let dyexex_libs: Vec<(String, Box<dyn BoxedLaunchExEx<Node>>)> = dyexex_libs_paths
+            .into_iter()
+            .map(|(id, lib_path)| {
+                // create a new exex handle
+                let (handle, events, notifications) = ExExHandle::new(
+                    id.clone(),
+                    head,
+                    components.provider().clone(),
+                    components.block_executor().clone(),
+                    exex_wal.handle(),
+                );
+                exex_handles.push(handle);
+
+                // create the launch context for the exex
+                let context = ExExContext {
+                    head,
+                    config: config_container.config.clone(),
+                    reth_config: config_container.toml_config.clone(),
+                    components: components.clone(),
+                    events,
+                    notifications,
+                };
+
+                let lib = unsafe { reth_exex::load_library(lib_path, context) }?;
+                Ok((id, lib))
+            })
+            .collect::<eyre::Result<_>>()?;
+
+        // extended with dynamically loaded libraries
+        extensions.extend(dyexex_libs);
+
+        if extensions.is_empty() {
+            // nothing to launch
+            return Ok(None)
+        }
 
         for (id, exex) in extensions {
+        	// TODO(0xurb) - avoid recreation for dynamically loaded exexes
             // create a new exex handle
             let (handle, events, notifications) = ExExHandle::new(
                 id.clone(),
@@ -72,6 +113,7 @@ impl<Node: FullNodeComponents + Clone> ExExLauncher<Node> {
             );
             exex_handles.push(handle);
 
+            // TODO(0xurb) - avoid recreation for dynamically loaded exexes
             // create the launch context for the exex
             let context = ExExContext {
                 head,

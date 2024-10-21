@@ -40,8 +40,14 @@ pub use backfill::*;
 mod context;
 pub use context::*;
 
+mod dyexex;
+pub use dyexex::*;
+
 mod event;
 pub use event::*;
+
+/// Support for installing the ExExs (execution extensions) in a node.
+pub mod launch;
 
 mod manager;
 pub use manager::*;

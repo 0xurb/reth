@@ -355,6 +355,11 @@ impl<D> ChainPath<D> {
     pub fn exex_wal(&self) -> PathBuf {
         self.data_dir().join("exex/wal")
     }
+
+    /// Returns the path to the ExEx libs directory for this chain.
+    pub fn exex_libs(&self) -> PathBuf {
+        self.data_dir().join("exex/libs")
+    }
 }
 
 impl<D> AsRef<Path> for ChainPath<D> {

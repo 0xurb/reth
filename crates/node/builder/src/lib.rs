@@ -35,9 +35,6 @@ pub mod rpc;
 
 pub mod setup;
 
-/// Support for installing the ExExs (execution extensions) in a node.
-pub mod exex;
-
 /// Re-export the core configuration traits.
 pub use reth_node_core::cli::config::{
     PayloadBuilderConfig, RethNetworkConfig, RethTransactionPoolConfig,
