@@ -27,8 +27,9 @@
 #[macro_export]
 macro_rules! define_exex {
     ($user_fn:ident) => {
+        #[allow(no_mangle_generic_items, unreachable_pub)]
         #[no_mangle]
-        pub extern fn _launch_exex<Node: FullNodeComponents>(
+        pub extern "Rust" fn _launch_exex<Node: FullNodeComponents>(
             ctx: $crate::ExExContext<Node>,
         ) -> impl std::future::Future<
             Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
@@ -39,61 +40,63 @@ macro_rules! define_exex {
     (async move |ctx| {
         Ok($user_fn:ident(ctx))
     }) => {
+        #[allow(no_mangle_generic_items, unreachable_pub)]
         #[no_mangle]
-        pub extern fn _launch_exex<Node: FullNodeComponents>(
+        pub async extern "Rust" fn _launch_exex<Node: FullNodeComponents>(
             ctx: $crate::ExExContext<Node>,
-        ) -> impl std::future::Future<
-            Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
-        > {
-            async move { Ok($user_fn(ctx)) }
+        ) -> eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send> {
+            Ok($user_fn(ctx))
         }
     };
 }
 
 #[cfg(test)]
 mod tests {
-    use reth_exex_test_utils::{test_exex_context, Adapter};
     use reth_node_api::FullNodeComponents;
 
-    use crate::ExExContext;
+    use crate::context::ExExContext;
 
-    #[tokio::test]
-    async fn should_define_exex() -> eyre::Result<()> {
-        async fn exex<Node: FullNodeComponents>(
+    #[test]
+    const fn should_define_exex() {
+        async fn _exex<Node: FullNodeComponents>(
             _ctx: ExExContext<Node>,
         ) -> eyre::Result<impl std::future::Future<Output = eyre::Result<()>>> {
             let _exex = async move { Ok(()) };
             Ok(_exex)
         }
 
-        define_exex!(exex);
+        define_exex!(_exex);
 
-        let (ctx, _) = test_exex_context().await?;
-
-        _launch_exex::<Adapter>(ctx);
-
-        Ok(())
+        fn _it_defines<Node: FullNodeComponents>(
+            ctx: ExExContext<Node>,
+        ) -> impl std::future::Future<
+            Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
+        > {
+            _launch_exex::<Node>(ctx)
+        }
     }
 
-    #[tokio::test]
-    async fn should_define_exex_closure() -> eyre::Result<()> {
-        // ensure that we have right `exex` closure by design
-        async fn _exex<Node: FullNodeComponents>(
-            ctx: ExExContext<Node>,
-        ) -> eyre::Result<impl std::future::Future<Output = eyre::Result<()>>> {
-            Ok(exex(ctx))
-        }
-
-        async fn exex<Node: FullNodeComponents>(_ctx: ExExContext<Node>) -> eyre::Result<()> {
+    #[test]
+    const fn should_define_exex_closure() {
+        async fn _exex<Node: FullNodeComponents>(_ctx: ExExContext<Node>) -> eyre::Result<()> {
             Ok(())
         }
 
-        define_exex!(async move |ctx| { Ok(exex(ctx)) });
+        // ensure that we have right `exex` closure by design
+        async fn __exex<Node: FullNodeComponents>(
+            ctx: ExExContext<Node>,
+        ) -> eyre::Result<impl std::future::Future<Output = eyre::Result<()>>> {
+            Ok(_exex(ctx))
+        }
 
-        let (ctx, _) = test_exex_context().await?;
+        define_exex!(async move |ctx| { Ok(_exex(ctx)) });
 
-        _launch_exex::<Adapter>(ctx);
-
-        Ok(())
+        fn _it_defines<Node: FullNodeComponents>(
+            ctx: ExExContext<Node>,
+        ) -> impl std::future::Future<
+            Output = eyre::Result<impl std::future::Future<Output = eyre::Result<()>> + Send>,
+        > {
+            _launch_exex::<Node>(ctx)
+        }
     }
 }
